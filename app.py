@@ -1,167 +1,144 @@
-import numpy as np
-import pandas as pd
-import plotly.graph_objs as go
-import dash
-import dash_core_components as dcc
-import dash_html_components as html
-from dash.dependencies import Input, Output
-import plotly.express as px
+import matplotlib.pyplot as plt
+import streamlit as st
+from pandas import DataFrame
+from seaborn import heatmap
+import helper
+import preprocessor
+from helper import most_common_words, emoji_helper, most_busy_users, fetch_stats
 
-external_stylesheet = [
-    {
-       'href':"https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css",
-       'rel':"stylesheet" ,
-       'integrity':"sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC",
-       'crossorigin':"anonymous",
-    }
-]
+st.sidebar.title("Whatsapp Chat Analyzer")
 
-patients = pd.read_csv("state_wise_daily (1).csv")
-total = patients.shape[0]
-active = patients[patients['Status']=='Confirmed'].shape[0]
-Recovered = patients[patients['Status']=='Recovered'].shape[0]
-Deaths = patients[patients['Status']=='Deceased'].shape[0]
+uploaded_file = st.sidebar.file_uploader("Choose a file")
+if uploaded_file is not None:
+    bytes_data = uploaded_file.getvalue()
+    data = bytes_data.decode("utf-8")
+    df = preprocessor.preprocess(data)
+    st.dataframe(df)
 
-options = [
-    {'label':'All','value':'All'},
-    {'label':'Hospitalized','value':'Hospitalized'},
-    {'label': 'Recovered', 'value': 'Recovered'},
-    {'label': 'Deceased', 'value': 'Deceased'},
-]
+    # fetch unique users
+    user_list = df['user'].unique().tolist()
+    if "group notification" in user_list:
+        user_list.remove('group_notification')
+    user_list.sort()
+    user_list.insert(0, "Overall")
 
-options1=[
-    {'label':'All', 'value':'All'},
-    {'label':'Mask', 'value':'Mask'},
-    {'label':'Sanitizer','value':'Sanitizer'},
-    {'label':'Oxygen','value':'Oxygen'}
-]
+    selected_user = st.sidebar.selectbox("Show analysis wrt", user_list)
+    if not st.sidebar.button("Show Analysis"):
+        # Stats Area
+        num_messages, words, num_media_messages, num_links = fetch_stats(selected_user, df)
+        st.title("Top Statistics of whatsapp chat")
+        col1, col2, col3, col4 = st.columns(4)
 
-options2 = [
-    {'label': 'Red Zone', 'value': 'Red Zone'},
-    {'label': 'Blue Zone', 'value': 'Blue Zone'},
-    {'label': 'Green Zone', 'value': 'Green Zone'},
-    {'label': 'Orange Zone', 'value': 'Orange Zone'}
-]
+        with col1:
+            st.header("Total Messages")
+            st.title(num_messages)
+        with col2:
+            st.header("Total Words")
+            st.title(words)
+        with col3:
+            st.header("Media Shared")
+            st.title(num_media_messages)
+        with col4:
+            st.header("Links Shared")
+            st.title(num_links)
 
+    if selected_user == 'Overall':
+        st.title('Most Busy Users')
+        x, new_df = most_busy_users(df)
+        fig, ax = plt.subplots()
 
-app = dash.Dash(__name__,external_stylesheets =external_stylesheet)
+        col1, col2 = st.columns(2)
 
-app.layout = html.Div([
-    html.H1('corona virus pandemic', style={'color':'#FFFFFF','text-align':'center'}),
-    html.Div([
-        html.Div([
-            html.Div([
-                html.Div([
-                    html.H3('Total cases',className='text-light'),
-                    html.H4(total,style={'color':'#FFFFFF'})
-                ],className='card-body')
-            ],className='card bg-danger')
-        ],className='col-md-3'),
-        html.Div([
-            html.Div([
-                html.Div([
-                    html.H3('Active cases',className='text-light'),
-                    html.H4(active,style={'color':'#FFFFFF'})
-                ],className='card-body')
-            ],className='card bg-info')
+        with col1:
+            ax.bar(x.index, x.values, color='pink')
+            plt.xticks(rotation='vertical')
+            st.pyplot(fig)
+        with col2:
+            st.dataframe(new_df)
 
-        ],className='col-md-3'),
-        html.Div([
-            html.Div([
-                html.Div([
-                    html.H3('Recovered cases', className='text-light'),
-                    html.H4(Recovered, style={'color': '#FFFFFF'})
-                ], className='card-body')
-            ], className='card bg-warning')
-        ],className='col-md-3'),
-        html.Div([
-            html.Div([
-                html.Div([
-                    html.H3('Total Deaths', className='text-light'),
-                    html.H4(Deaths, style={'color': '#FFFFFF'})
-                ], className='card-body')
-            ], className='card bg-success')
-        ],className='col-md-3')
-    ],className='row'),
+    # most common words
+    most_common_df = most_common_words(selected_user, df)
+    st.dataframe(most_common_df)
 
-    html.Div([
-        html.Div([
-            html.Div([
-                html.Div([
-                    dcc.Dropdown(id='plot-graph', options=options1, value='All'),
-                    dcc.Graph(id='graph')
-                ], className='card-body')
-            ], className='card bg-info')
-        ], className='col-md-6'),
+    fig, ax = plt.subplots()
 
-        html.Div([
-            html.Div([
-                html.Div([
-                    dcc.Dropdown(id='my_dropdown', options=options2, value='Status',
-                                 style={"width": "100%"}),
-                    dcc.Graph(id='the_graph')
-                ], className='card-body')
-            ], className='card bg-success')
-        ], className='col-md-6')
-    ],className='row'),
+    ax.barh(most_common_df[0], most_common_df[1], color='orange')
+    plt.xticks(rotation='vertical')
 
-    html.Div([
-        html.Div([
-            html.Div([
-                html.Div([
-                    dcc.Dropdown(id ='picker', options =options, value='All'),
-                    dcc.Graph(id='Bar')
-                ],className='card-body')
-            ],className='card')
-        ],className ='col-md-12')
+    st.title('Most commmon words')
+    st.pyplot(fig)
 
-    ],className='row')
-],className='container')
+    # emoji analysis
+    emoji_df = emoji_helper(selected_user, df)
+    st.title("Emoji Analysis")
 
-@app.callback(Output('Bar', 'figure'), [Input('picker', 'value')])
-def update_graph(type):
+    col1, col2 = st.columns(2)
 
-        if type == 'All':
-            return {'data': [go.Bar(x=patients['State'], y=patients['Total'])],
-                    'layout': go.Layout(title="State Total Count", plot_bgcolor='orange')
-                    }
-        if type == "Hospitalized":
-            return {'data': [go.Bar(x=patients['State'], y=patients['Hospitalized'])],
-                    'layout': go.Layout(title="State Total Count", plot_bgcolor='orange')
-                    }
-        if type == "Recovered":
-            return {'data': [go.Bar(x=patients['State'], y=patients['Recovered'])],
-                    'layout': go.Layout(title="State Total Count", plot_bgcolor='orange')
-                    }
-        if type == "Deceased":
-            return {'data': [go.Bar(x=patients['State'], y=patients['Deceased'])],
-                    'layout': go.Layout(title="State Total Count", plot_bgcolor='orange')
-                    }
+    with col1:
+        st.dataframe(emoji_df)
+    with col2:
+        fig, ax = plt.subplots()
+        ax.pie(emoji_df[1].head(), labels=emoji_df[0].head(), autopct="%0.2f")
+        st.pyplot(fig)
 
+    # monthly timeline
+    st.title("Monthly Timeline Analysis")
+    timeline = helper.monthly_timeline(selected_user, df)
+    fig, ax = plt.subplots()
+    ax.plot(timeline['time'], timeline['message'], color='green')
+    plt.xticks(rotation='vertical')
+    st.pyplot(fig)
 
-@app.callback(Output('graph', 'figure'), [Input('plot-graph', 'value')])
-def generate_graph(type):
-    if type == 'All':
-        return {'data': [go.Line(x=patients['Status'], y=patients['Total'])],
-                'layout': go.Layout(title="Commodities Total Count", plot_bgcolor='pink')}
-    if type == 'Mask':
-        return {'data': [go.Line(x=patients['Status'], y=patients['Mask'])],
-                'layout': go.Layout(title="Commodities Total Count", plot_bgcolor='pink')}
-    if type == 'Sanitizer':
-        return {'data': [go.Line(x=patients['Status'], y=patients['Sanitizer'])],
-                'layout': go.Layout(title="Commodities Total Count", plot_bgcolor='pink')}
-    if type == 'Oxygen':
-        return {'data': [go.Line(x=patients['Status'], y=patients['Oxygen'])],
-                'layout': go.Layout(title="Commodities Total Count", plot_bgcolor='pink')}
+    # daily timeline
+    st.title("Daily Timeline")
+    daily_timeline = helper.daily_timeline(selected_user, df)
+    fig, ax = plt.subplots()
+    ax.plot(daily_timeline['only_date'], daily_timeline['message'], color='blue')
+    plt.xticks(rotation='vertical')
+    st.pyplot(fig)
 
+    # activity map
+    st.title('Activity Map')
+    col1, col2 = st.columns(2)
 
-@app.callback(Output('the_graph','figure'),[Input('my_dropdown','value')])
-def generate_graph(my_dropdown):
-    piechart = px.pie(data_frame=patients,names= my_dropdown, hole=0.3)
-    return (piechart)
+    with col1:
+        st.header("Most busy day")
+        busy_day = helper.week_activity_map(selected_user, df)
+        fig, ax = plt.subplots()
+        ax.bar(busy_day.index, busy_day.values, color='purple')
+        plt.xticks(rotation='vertical')
+        st.pyplot(fig)
 
-if __name__=="__main__":
-    app.run_server(debug=True)
+    with col2:
+        st.header("Most busy month")
+        busy_month = helper.month_activity_map(selected_user, df)
+        fig, ax = plt.subplots()
+        ax.bar(busy_month.index, busy_month.values, color='orange')
+        plt.xticks(rotation='vertical')
+        st.pyplot(fig)
+
+        st.title("online Activity Map")
+        user_heatmap = helper.activity_heatmap(selected_user, df)
+        fig, ax = plt.subplots()
+        ax = heatmap(user_heatmap)
+        st.pyplot(fig)
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+            
+                
+        
+           
+
+        
